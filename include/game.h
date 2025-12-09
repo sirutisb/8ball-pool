@@ -4,13 +4,11 @@
 #include <cmath>
 #include <memory>
 #include <optional>
+#include <iostream>
 
 #include "ball.h"
 #include "cue.h"
 #include "gameConstants.h"
-
-#include <iostream>
-
 
 class Game {
 public:
@@ -21,17 +19,13 @@ public:
         , pocketSprite_(Constants::pocketRadius)
         , cue_()
     {
-
-
         window_.setFramerateLimit(Constants::frameLimit);
         view_.setCenter(sf::Vector2f(0.f, 0.f));
         window_.setView(view_);
 
         if (!font_.openFromFile("arial.ttf")) {
-            std::cout << "error loading font!!!\n";
             throw std::runtime_error("couldnt find font");
         }
-
 
         setupTable();
         setupBalls();
@@ -74,14 +68,15 @@ private:
                 }
             } else if (auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
                 if (keyPressed->code == sf::Keyboard::Key::Space) {
-                    balls_.front().setVelocity(sf::Vector2f{650, 200});
-                    std::cout << "Set velocity\n";
+                    // do something
                 }
             }
         }
     }
 
     void handleCushionCollision(Ball& ball) {
+        if (ball.isPocketed()) return;
+
         auto& ballPos = ball.getPosition();
         auto& ballVel = ball.getVelocity();
         const float ballRadius = Constants::ballRadius;
@@ -108,10 +103,26 @@ private:
         }
     }
 
-    void handlePocketDetection(Ball& ball) { 
+    void handlePocketDetection(Ball& ball) {
+        if (ball.isPocketed()) return;
+
+        const auto& ballPos = ball.getPosition();
+
+        for (const auto& pocketPos : pocketPositions_) {
+            sf::Vector2f delta = pocketPos - ballPos;
+            if (delta.lengthSquared() <= 4 * Constants::ballRadius * Constants::ballRadius) {
+                if (ball.getType() == BallType::Cue) {
+                    ball.getPosition() = sf::Vector2f{0.f, 0.f};
+                } else {
+                    ball.pocket();
+                }
+            } 
+        }
     }
 
     void resolveBallCollision(Ball& a, Ball& b) {
+        if (a.isPocketed() || b.isPocketed()) return;
+
         auto& pos_a = a.getPosition();
         auto& pos_b = b.getPosition();
 
@@ -198,23 +209,17 @@ private:
     }
 
     void render() {
-        
-        
-        static std::array<sf::Vector2f, 6> pocketPositions {
-            sf::Vector2f{-750.f, -375.f}, sf::Vector2f{0.f, -375.f}, sf::Vector2f{750.f, -375.f},
-            sf::Vector2f{-750.f,  375.f}, sf::Vector2f{0.f,  375.f}, sf::Vector2f{750.f,  375.f},
-        };
-
         window_.clear(sf::Color(50, 50, 50));
 
         window_.draw(table_);
 
-        for (const auto& pos : pocketPositions) {
+        for (const auto& pos : pocketPositions_) {
             pocketSprite_.setPosition(pos);
             window_.draw(pocketSprite_);
         }
 
         for (const auto& ball : balls_) {
+            if (ball.isPocketed()) continue;
             window_.draw(ball);
         }
 
@@ -240,16 +245,10 @@ private:
         // Add cue
         balls_.push_back(Ball{BallType::Cue, std::nullopt, sf::Vector2f{0.f, 0.f}, font_}); // dont need font??
 
-        // for (int i = 100; i < 500; i++) {
-        //     balls_.push_back(Ball{BallType::Solid, i, sf::Vector2f{0.f, 0.f}, font_});
-        // }
-
-
         float ballRadius = Constants::ballRadius;
         float diameter = ballRadius * 2.f;
         
         // The vertical distance between rows in a hex packing
-        // Formula: Radius * sqrt(3)
         float rowOffset = ballRadius * std::sqrt(3.f);
 
         // Define the start position (The Apex of the pyramid)
@@ -272,10 +271,9 @@ private:
                 float y = (row - col / 2.0f) * diameter;
 
                 // Apply calculated offsets to the Apex position
-                // Note: We subtract x to make the pyramid point LEFT (standard TV view)
+                // we subtract x to make the pyramid point LEFT
                 sf::Vector2f ballPosition{apexPos.x + x, apexPos.y + y};
 
-                // COLOR LOGIC (Basic 8-Ball Rules)
                 if (col == 2 && row == 1) {
                     ball.setFillColor(sf::Color::Black); // The 8-Ball (Center)
                     balls_.push_back(Ball{BallType::EightBall, 8, ballPosition, font_});
@@ -301,6 +299,11 @@ private:
             }
         }
     }
+
+    std::array<sf::Vector2f, 6> pocketPositions_ {
+        sf::Vector2f{-750.f, -375.f}, sf::Vector2f{0.f, -375.f}, sf::Vector2f{750.f, -375.f},
+        sf::Vector2f{-750.f,  375.f}, sf::Vector2f{0.f,  375.f}, sf::Vector2f{750.f,  375.f},
+    };
 
     sf::RenderWindow window_;
     sf::View view_;

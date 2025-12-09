@@ -38,6 +38,9 @@ public:
     }
 
     void update(float dt) {
+        if (isPocketed()) return;
+
+        velocity_ -= velocity_ * 0.3f * dt; // decelleration (friction)
         position_ += velocity_ * dt;
 
 
@@ -56,7 +59,7 @@ public:
 
     bool isPocketed() const { return pocketed_; }
 
-
+    void pocket() { pocketed_ = true; }
 
 private:
 
