@@ -2,6 +2,10 @@
 
 A simple 8-ball pool game implementation using C++ and SFML.
 
+## Preview
+<img width="1922" height="1112" alt="image" src="https://github.com/user-attachments/assets/cc4c7b92-8eb7-4e59-b414-ad624a154554" />
+
+
 ## Features
 - Physics-based ball collisions and movement.
 - Cue aiming and shooting mechanics.
