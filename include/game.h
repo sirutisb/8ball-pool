@@ -17,7 +17,6 @@ public:
         , view_(window_.getDefaultView())
         , table_(Constants::tableSize)
         , pocket_(Constants::pocketRadius)
-        , cue_(BallType::Cue, std::nullopt, sf::Vector2f{}, font_) // dont need font
     {
         window_.setFramerateLimit(Constants::frameLimit);
         view_.setCenter(sf::Vector2f(0.f, 0.f));
@@ -34,9 +33,11 @@ public:
     }
 
     void run() {
+        static sf::Clock clock;
         while (window_.isOpen()) {
+            float dt = clock.restart().asSeconds();
             handleEvents();
-            update();
+            update(dt);
             render();
         }
     }
@@ -47,13 +48,126 @@ private:
             if (event->is<sf::Event::Closed>()) {
                 window_.close();
             } else if (auto* mouseMove = event->getIf<sf::Event::MouseMoved>()) {
-                mouseMove->position.x;
+                
+            } else if (auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
+                if (keyPressed->code == sf::Keyboard::Key::Space) {
+                    balls_.front().setVelocity(sf::Vector2f{650, 200});
+                    std::cout << "Set velocity\n";
+                }
             }
         }
     }
 
-    void update() {
+    void handleCushionCollision(Ball& ball) {
+        auto& ballPos = ball.getPosition();
+        auto& ballVel = ball.getVelocity();
+        const float ballRadius = Constants::ballRadius;
+        const auto& tableSize = Constants::tableSize;
 
+        // if (ball.getType() != BallType::Cue) return;
+
+        // std::cout << "Pos: " << ballPos.x << " " << ballPos.y
+        // << " | Vel: " << ballVel.x << " " << ballVel.y
+        // << " | Table: " << tableSize.x << " " << tableSize.y << "\n";
+
+        if ((ballPos.x + ballRadius >= tableSize.x / 2.f && ballVel.x > 0)) {
+            ballVel.x *= -1;
+            ballPos.x = tableSize.x / 2.f - ballRadius;
+        }
+
+        if (ballPos.x - ballRadius <= -tableSize.x / 2.f && ballVel.x < 0) {
+            ballVel.x *= -1;
+            ballPos.x = -tableSize.x / 2.f + ballRadius;
+        }
+
+        if ((ballPos.y + ballRadius >= tableSize.y / 2.f && ballVel.y > 0)) {
+            ballVel.y *= -1;
+            ballPos.y = tableSize.y / 2.f - ballRadius;
+        }
+
+        if (ballPos.y - ballRadius <= -tableSize.y / 2.f && ballVel.y < 0) {
+            ballVel.y *= -1;
+            ballPos.y = -tableSize.y / 2.f + ballRadius;
+        }
+    }
+
+    void handlePocketDetection(Ball& ball) {
+
+    }
+
+    void resolveBallCollision(Ball& a, Ball& b) {
+        auto& pos_a = a.getPosition();
+        auto& pos_b = b.getPosition();
+
+        auto& vel_a = a.getVelocity();
+        auto& vel_b = b.getVelocity();
+
+        // Vector from A to B
+        sf::Vector2f delta = pos_b - pos_a;
+        float dist2 = delta.lengthSquared();
+
+        const float minDist = 2.f * Constants::ballRadius;
+        const float minDist2 = minDist * minDist;
+
+        // Not overlapping → no collision
+        if (dist2 >= minDist2 || dist2 == 0.f) {
+            return;
+        }
+
+        float dist = std::sqrt(dist2);
+        sf::Vector2f normal = delta / dist;  // unit vector along line of centres
+
+        // Relative velocity
+        sf::Vector2f relVel = vel_b - vel_a;
+        // float relAlongNormal = sf::dot(relVel, normal);
+        float relAlongNormal = relVel.x * normal.x + relVel.y * normal.y;
+
+        // If balls are moving apart, no collision response
+        if (relAlongNormal > 0.f) {
+            return;
+        }
+
+        // Coefficient of restitution (1 = perfectly elastic, <1 = a bit loss)
+        const float e = 0.98f;
+
+        float j = -(1.f + e) * relAlongNormal / 2.f;
+
+        // Impulse vector
+        sf::Vector2f impulse = j * normal;
+
+        // Apply impulse to velocities
+        vel_a -= impulse;
+        vel_b += impulse;
+
+        // Positional correction to eliminate overlap (to prevent sinking/jitter)
+        float overlap = minDist - dist;
+
+        // Move proportional to inverse mass (lighter moves more)
+        sf::Vector2f correctionA = -normal * (overlap / 2);
+        sf::Vector2f correctionB =  normal * (overlap / 2);
+
+        pos_a += correctionA;
+        pos_b += correctionB;
+    }
+
+    void update(float dt) {
+        for (auto& ball : balls_) {
+            ball.update(dt);
+        }
+
+        for (auto& b : balls_) {
+            handleCushionCollision(b);
+        }
+
+        for (int i = 0; i < balls_.size(); i++) {
+            for (int j = i + 1; j < balls_.size(); j++) {
+                resolveBallCollision(balls_[i], balls_[j]);
+            }
+        }
+
+        for (auto& b : balls_) {
+            handlePocketDetection(b);
+        }
     }
 
     void render() {
@@ -77,8 +191,6 @@ private:
             window_.draw(ball);
         }
 
-        window_.draw(cue_);
-
         window_.display();
     }
 
@@ -94,6 +206,16 @@ private:
     }
 
     void setupBalls() {
+        balls_.reserve(16);
+
+        // Add cue
+        balls_.push_back(Ball{BallType::Cue, std::nullopt, sf::Vector2f{0.f, 0.f}, font_}); // dont need font??
+
+        for (int i = 100; i < 500; i++) {
+            balls_.push_back(Ball{BallType::Solid, i, sf::Vector2f{0.f, 0.f}, font_});
+        }
+
+
         float ballRadius = Constants::ballRadius;
         float diameter = ballRadius * 2.f;
         
@@ -169,8 +291,5 @@ private:
 
     sf::Font font_;
 
-
-    Ball cue_;
     std::vector<Ball> balls_;
-
 };

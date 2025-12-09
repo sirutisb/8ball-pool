@@ -3,6 +3,8 @@
 #include <optional>
 #include "gameConstants.h"
 
+#include <iostream>
+
 enum class BallType {
     Cue,
     Solid,
@@ -29,11 +31,32 @@ public:
             numberText_.setString(std::to_string(*number));
             numberText_.setFillColor(sf::Color::Black);
             numberText_.setPosition(position_);
-            
+
             const sf::FloatRect bounds = numberText_.getLocalBounds();
             numberText_.setOrigin(bounds.position + bounds.size / 2.f);
         }
     }
+
+    void update(float dt) {
+        position_ += velocity_ * dt;
+
+
+        shape_.setPosition(position_);
+        numberText_.setPosition(position_);
+    }
+
+    void setVelocity(sf::Vector2f vel) {
+        velocity_ = vel;
+    }
+
+    BallType getType() const { return type_; }
+
+    sf::Vector2f& getPosition() { return position_; }
+    sf::Vector2f& getVelocity() { return velocity_; }
+
+    bool isPocketed() const { return pocketed_; }
+
+
 
 private:
 
