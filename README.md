@@ -31,13 +31,12 @@ A simple 8-ball pool game implementation using C++ and SFML.
    ```
 
 4. **Run**:
-   Navigate to the output directory (usually `build/bin/`) and run the executable:
+   Navigate to the output directory and run the executable:
    ```bash
    ./build/bin/main
    # Or on Windows:
    .\build\bin\main.exe
    ```
-
    > **Note:** Ensure `arial.ttf` is in the same folder as the executable. You can copy it from the `assets/fonts/` folder.
 
 ## Controls
