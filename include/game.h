@@ -3,8 +3,10 @@
 #include <vector>
 #include <cmath>
 #include <memory>
+#include <optional>
 
 #include "ball.h"
+#include "cue.h"
 #include "gameConstants.h"
 
 #include <iostream>
@@ -13,11 +15,14 @@
 class Game {
 public:
     Game()
-        : window_(sf::VideoMode(Constants::windowSize), "8 Ball Pool")
+        : window_(sf::VideoMode(Constants::windowSize), "8 Ball Pool", sf::Style::Default, sf::State::Windowed, sf::ContextSettings{.antiAliasingLevel = Constants::antiAliasingLevel})
         , view_(window_.getDefaultView())
         , table_(Constants::tableSize)
-        , pocket_(Constants::pocketRadius)
+        , pocketSprite_(Constants::pocketRadius)
+        , cue_()
     {
+
+
         window_.setFramerateLimit(Constants::frameLimit);
         view_.setCenter(sf::Vector2f(0.f, 0.f));
         window_.setView(view_);
@@ -33,7 +38,7 @@ public:
     }
 
     void run() {
-        static sf::Clock clock;
+        sf::Clock clock;
         while (window_.isOpen()) {
             float dt = clock.restart().asSeconds();
             handleEvents();
@@ -47,8 +52,26 @@ private:
         while (const std::optional event = window_.pollEvent()) {
             if (event->is<sf::Event::Closed>()) {
                 window_.close();
+            } else if (auto* mousePressed = event->getIf<sf::Event::MouseButtonPressed>()) {
+                if (mousePressed->button == sf::Mouse::Button::Left) {
+                    mouseWorldPos_ = window_.mapPixelToCoords(mousePressed->position);
+
+                    Ball& cueBall = balls_.front();
+
+                    sf::Vector2f cueBallDelta = cueBall.getPosition() - mouseWorldPos_;
+                    sf::Vector2f shootDir = cueBallDelta.normalized();
+                    
+                    cueBall.getVelocity() = shootDir * cue_.getStrength() * 2000.f; // amplify with strenght percentage
+                }
+            } else if (auto* mouseReleased = event->getIf<sf::Event::MouseButtonReleased>()) {
             } else if (auto* mouseMove = event->getIf<sf::Event::MouseMoved>()) {
-                
+                mouseWorldPos_ = window_.mapPixelToCoords(mouseMove->position);
+            } else if (auto* mouseScrolled = event->getIf<sf::Event::MouseWheelScrolled>()) {
+                if (mouseScrolled->delta > 0) {
+                    cue_.increaseStength();
+                } else {
+                    cue_.decreaseStength();
+                }
             } else if (auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
                 if (keyPressed->code == sf::Keyboard::Key::Space) {
                     balls_.front().setVelocity(sf::Vector2f{650, 200});
@@ -64,35 +87,28 @@ private:
         const float ballRadius = Constants::ballRadius;
         const auto& tableSize = Constants::tableSize;
 
-        // if (ball.getType() != BallType::Cue) return;
-
-        // std::cout << "Pos: " << ballPos.x << " " << ballPos.y
-        // << " | Vel: " << ballVel.x << " " << ballVel.y
-        // << " | Table: " << tableSize.x << " " << tableSize.y << "\n";
-
-        if ((ballPos.x + ballRadius >= tableSize.x / 2.f && ballVel.x > 0)) {
-            ballVel.x *= -1;
+        if ((ballPos.x + ballRadius >= tableSize.x / 2.f)) {
             ballPos.x = tableSize.x / 2.f - ballRadius;
-        }
-
-        if (ballPos.x - ballRadius <= -tableSize.x / 2.f && ballVel.x < 0) {
             ballVel.x *= -1;
+        }
+
+        if (ballPos.x - ballRadius <= -tableSize.x / 2.f) {
             ballPos.x = -tableSize.x / 2.f + ballRadius;
+            ballVel.x *= -1;
         }
 
-        if ((ballPos.y + ballRadius >= tableSize.y / 2.f && ballVel.y > 0)) {
-            ballVel.y *= -1;
+        if ((ballPos.y + ballRadius >= tableSize.y / 2.f)) {
             ballPos.y = tableSize.y / 2.f - ballRadius;
+            ballVel.y *= -1;
         }
 
-        if (ballPos.y - ballRadius <= -tableSize.y / 2.f && ballVel.y < 0) {
-            ballVel.y *= -1;
+        if (ballPos.y - ballRadius <= -tableSize.y / 2.f) {
             ballPos.y = -tableSize.y / 2.f + ballRadius;
+            ballVel.y *= -1;
         }
     }
 
-    void handlePocketDetection(Ball& ball) {
-
+    void handlePocketDetection(Ball& ball) { 
     }
 
     void resolveBallCollision(Ball& a, Ball& b) {
@@ -106,10 +122,11 @@ private:
         sf::Vector2f delta = pos_b - pos_a;
         float dist2 = delta.lengthSquared();
 
+        // Sum of both radius
         const float minDist = 2.f * Constants::ballRadius;
         const float minDist2 = minDist * minDist;
 
-        // Not overlapping → no collision
+        // Not overlapping = no collision
         if (dist2 >= minDist2 || dist2 == 0.f) {
             return;
         }
@@ -151,6 +168,8 @@ private:
     }
 
     void update(float dt) {
+        Ball& cueBall = balls_.front();
+
         for (auto& ball : balls_) {
             ball.update(dt);
         }
@@ -168,6 +187,14 @@ private:
         for (auto& b : balls_) {
             handlePocketDetection(b);
         }
+
+        // // just to update the frame after resolving everything.
+        for (auto& ball : balls_) {
+            ball.update(0);
+        }
+
+
+        cue_.update(cueBall, mouseWorldPos_);
     }
 
     void render() {
@@ -183,13 +210,15 @@ private:
         window_.draw(table_);
 
         for (const auto& pos : pocketPositions) {
-            pocket_.setPosition(pos);
-            window_.draw(pocket_);
+            pocketSprite_.setPosition(pos);
+            window_.draw(pocketSprite_);
         }
 
         for (const auto& ball : balls_) {
             window_.draw(ball);
         }
+
+        window_.draw(cue_);
 
         window_.display();
     }
@@ -201,8 +230,8 @@ private:
         table_.setOrigin(Constants::tableSize / 2.f);
 
 
-        pocket_.setOrigin(sf::Vector2f{pocket_.getRadius(), pocket_.getRadius()});
-        pocket_.setFillColor(sf::Color::Black);
+        pocketSprite_.setOrigin(sf::Vector2f{pocketSprite_.getRadius(), pocketSprite_.getRadius()});
+        pocketSprite_.setFillColor(sf::Color::Black);
     }
 
     void setupBalls() {
@@ -211,9 +240,9 @@ private:
         // Add cue
         balls_.push_back(Ball{BallType::Cue, std::nullopt, sf::Vector2f{0.f, 0.f}, font_}); // dont need font??
 
-        for (int i = 100; i < 500; i++) {
-            balls_.push_back(Ball{BallType::Solid, i, sf::Vector2f{0.f, 0.f}, font_});
-        }
+        // for (int i = 100; i < 500; i++) {
+        //     balls_.push_back(Ball{BallType::Solid, i, sf::Vector2f{0.f, 0.f}, font_});
+        // }
 
 
         float ballRadius = Constants::ballRadius;
@@ -223,9 +252,6 @@ private:
         // Formula: Radius * sqrt(3)
         float rowOffset = ballRadius * std::sqrt(3.f);
 
-        // std::vector<sf::CircleShape> balls;
-        
-        
         // Define the start position (The Apex of the pyramid)
         // We place it on the right side of the table
         sf::Vector2f apexPos = table_.getPosition();
@@ -233,18 +259,12 @@ private:
         apexPos.y -= 0.f;               // Centered vertically
 
         int ballCount = 0; // To track which ball we are creating
-
-        // Loop 5 Columns (Vertical Pyramid Rotated 90 degrees to point Left)
-        // col 0 = 1 ball, col 1 = 2 balls, etc.
         for (int col = 0; col < 5; ++col) {
             for (int row = 0; row <= col; ++row) {
 
                 sf::CircleShape ball(ballRadius);
                 ball.setOrigin(sf::Vector2f{ballRadius, ballRadius}); // Center the ball origin
 
-
-                // MATH FOR COORDINATES:
-                // X grows as we add columns (moving right)
                 float x = col * rowOffset;
                 
                 // Y is offset based on the row, centered around 0
@@ -287,9 +307,13 @@ private:
 
     // Rendering
     sf::RectangleShape table_;
-    sf::CircleShape pocket_;
+    sf::CircleShape pocketSprite_;
 
     sf::Font font_;
 
     std::vector<Ball> balls_;
+
+    sf::Vector2f mouseWorldPos_;
+
+    Cue cue_;
 };

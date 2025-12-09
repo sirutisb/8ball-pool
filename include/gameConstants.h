@@ -10,5 +10,10 @@ namespace Constants {
     constexpr float ballRadius{25.f};
     constexpr float pocketRadius{30.f};
 
-    constexpr unsigned int frameLimit = 30;
+
+    constexpr unsigned int antiAliasingLevel = 4u;
+
+    constexpr unsigned int frameLimit = 60;
+
+    constexpr float fixedTimeStep = 1.f / 50;
 };
